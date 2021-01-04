@@ -14,6 +14,7 @@
 #include <Fonts/FreeMonoBold24pt7b.h>
 
 Adafruit_SH110X display = Adafruit_SH110X(64, 128, &Wire);
+GFXcanvas1 canvas(64,128);
 
 unsigned long myTimer = 0;
 unsigned long myTimeout = 60000; // heart beat 60sec, LED build-in
@@ -92,8 +93,7 @@ void setup(){ // Einmalige Initialisierung
 
   airSensorSCD30.setMeasurementInterval(2);     // CO2-Messung alle 5 s
 
-  pinMode( 2 , OUTPUT);
-  digitalWrite( 2 , HIGH );
+  pinMode( 2 , INPUT);
       
   Serial.begin(115200);
   matrix.begin();// Matrix initialisieren 
@@ -103,19 +103,28 @@ void setup(){ // Einmalige Initialisierung
   matrix.setTextColor(60); // Helligkeit begrenzen 
   matrixausgabe.attach(0.08, matrixUpdate); // zyklisch aktualisieren
 
-  Serial.println();
+  //Serial.println();
   WSpixels.begin();//-------------- Initialisierung Neopixel
 
+  digitalWrite( 12 , HIGH ); //--- test LEDs
+
+  digitalWrite( 13 , HIGH ); //--- test LEDs
+
+  digitalWrite( 14 , HIGH ); //--- test LEDs
+
+  delay(500);
+ 
   digitalWrite( 12 , LOW );
 
   digitalWrite( 13 , LOW );
 
   digitalWrite( 14 , LOW );
 
-  Serial.println("128x64 OLED FeatherWing test");
+
+  //Serial.println("128x64 OLED FeatherWing test");
   display.begin(0x3C, true); // Address 0x3C default
 
-  Serial.println("OLED begun");
+  //Serial.println("OLED begun");
 
   // Show image buffer on the display hardware.
   // Since the buffer is intialized with an Adafruit splashscreen
@@ -129,36 +138,130 @@ void setup(){ // Einmalige Initialisierung
   
   Wire.setClock(100000L);            // 100 kHz SCD30 
   Wire.setClockStretchLimit(200000L);// CO2-SCD30
+  
+   display.setRotation(1);
+   display.setTextSize(1);
+   display.setTextColor(SH110X_WHITE);
+   display.setCursor(0,0);
+   display.println("CO2 Ampel V21/1");
+   display.println("starten ...");
+   display.println("");
+   display.display();
+   
+   delay(2000);
+
+  if (!( digitalRead(2) ))
+  {
+    display.println("Kalibierung starten?");
+    display.println("Button(2) 5sec halten");
+    display.display();
+    
+    delay( 5000 );
+    if (!( digitalRead(2) ))
+    {
+
+  digitalWrite( 12 , HIGH ); //--- test LEDs
+
+  digitalWrite( 13 , HIGH ); //--- test LEDs
+
+  digitalWrite( 14 , HIGH ); //--- test LEDs
+
+  int i = 0;
+  int sensor = 0;
+
+        for (i= 1; i<= ( 24 ); i=i+1)
+      {
+        sensor = airSensorSCD30.getCO2() ;
+
+  display.clearDisplay();
+  display.setRotation(0);
+  display.display();
+
+   
+  canvas.fillScreen(SH110X_BLACK);
+  canvas.setRotation(1);
+
+  canvas.setTextSize(1);
+  canvas.setTextColor(SH110X_WHITE);
+  canvas.setFont(&FreeMonoBold24pt7b);
+  canvas.setCursor(0,45);
+  if (CO2 <= 9999) {
+    canvas.print(String(sensor));
+  } else 
+  {
+    canvas.print("----");
+  }
+  canvas.setFont();
+  canvas.setCursor(110,40);
+  canvas.print("ppm");
+  canvas.setCursor(2,55);
+  canvas.print("Kalibrierung "+String((i)*5)+"/120s");
+    
+  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
+  display.display();
+
+        
+        delay( 5000 );
+        yield();
+      }
+      
+      // Forced Calibration Sensirion SCD 30
+      //Serial.print("Start SCD 30 calibration, please wait 20 s ...");
+      //delay(20000);
+      airSensorSCD30.setAltitudeCompensation(0); // Altitude in m ü NN 
+      airSensorSCD30.setForcedRecalibrationFactor(400); // fresh air 
+
+
+
+  delay(1000);
+ 
+  digitalWrite( 12 , LOW );
+
+  digitalWrite( 13 , LOW );
+
+  digitalWrite( 14 , LOW );
+
+    }
+  }
+
+  display.clearDisplay();
+  display.setRotation(0);
+  display.display();
+
+  
 }
 
 void loop() { // Kontinuierliche Wiederholung 
   CO2 = airSensorSCD30.getCO2();
+  
+  canvas.fillScreen(SH110X_BLACK);
+  canvas.setRotation(1);
 
-  display.clearDisplay();
-  display.display();
-
-  display.setRotation(1);
-
-  display.setTextSize(1);
-  display.setTextColor(SH110X_WHITE);
-  display.setFont(&FreeMonoBold24pt7b);
-  display.setCursor(0,45);
+  canvas.setTextSize(1);
+  canvas.setTextColor(SH110X_WHITE);
+  canvas.setFont(&FreeMonoBold24pt7b);
+  canvas.setCursor(0,45);
   if (CO2 <= 9999) {
-    display.print(String(CO2));
+    canvas.print(String(CO2));
   } else 
   {
-    display.print("----");
+    canvas.print("----");
   }
-  display.setFont();
-  display.setCursor(110,40);
-  display.print("ppm");
-  display.setCursor(0,55);
+  canvas.setFont();
+  canvas.setCursor(110,40);
+  canvas.print("ppm");
+  canvas.setCursor(2,55);
   //display.print("www.co2ampel.org - V1");
-  display.print(String(airSensorSCD30.getTemperature()-4)+"C  "+String(airSensorSCD30.getHumidity())+"%");
+  canvas.print(String(airSensorSCD30.getTemperature()-4)+"C");
+  canvas.setCursor(92,55);
+  canvas.print(String(airSensorSCD30.getHumidity())+"%");
     
-  display.display(); // actually display all of the above
-  
+  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
+  display.display();
 
+  // don't use this as long GPIO2 is set as INPUT to trigger sensor callibration!
+  // heardbeat - on build in LED
+  /*
   if (millis() > myTimeout + myTimer ) {
     myTimer = millis();
 
@@ -166,10 +269,11 @@ void loop() { // Kontinuierliche Wiederholung
     delay( 500 );
     digitalWrite( 2 , HIGH );
   }
+  */
   
   matrixAnzeige(String(String(( airSensorSCD30.getCO2() / 10 ))),1);
-  Serial.print("CO2:"+String(String(CO2)));
-  Serial.println();
+  Serial.println("CO2:"+String(String(CO2)));
+  //Serial.println();
   if (( ( CO2 ) < ( 1000 ) ))
   {
     digitalWrite( 12 , LOW );
@@ -177,8 +281,8 @@ void loop() { // Kontinuierliche Wiederholung
     digitalWrite( 14 , HIGH );
     WSpixels.setPixelColor(0,(0<32)?0:32,(64<32)?64:32,(0<48)?0:48);
     WSpixels.show();
-    Serial.print("green");
-    Serial.println();
+    //Serial.print("green");
+    //Serial.println();
   }
   else
   {
@@ -189,8 +293,8 @@ void loop() { // Kontinuierliche Wiederholung
       digitalWrite( 14 , LOW );
       WSpixels.setPixelColor(0,(64<32)?64:32,(64<32)?64:32,(0<48)?0:48);
       WSpixels.show();
-      Serial.print("yellow");
-      Serial.println();
+      //Serial.print("yellow");
+      //Serial.println();
     }
     else
     {
@@ -199,8 +303,8 @@ void loop() { // Kontinuierliche Wiederholung
       digitalWrite( 14 , LOW );
       WSpixels.setPixelColor(0,(64<32)?64:32,(0<32)?0:32,(0<48)?0:48);
       WSpixels.show();
-      Serial.print("red");
-      Serial.println();
+      //Serial.print("red");
+      //Serial.println();
     }
   }
   delay( 2000 );
