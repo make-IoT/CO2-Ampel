@@ -17,9 +17,10 @@ SensirionI2CScd4x scd4x;
 Adafruit_BME680 bme; // I2C
 
 //either LCD or RING not both!
-#define LCD 
-//#define RING
+#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
+//#define RING //use NeoPixel Ring with 20 Pixel
 
+//set to plot data with Arduino(TM) Plotter
 //#define PLOTTER
 
 #define SEALEVELPRESSURE_HPA (1013.25)
