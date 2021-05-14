@@ -17,8 +17,11 @@ SensirionI2CScd4x scd4x;
 Adafruit_BME680 bme; // I2C
 
 //either LCD or RING not both!
-//#define LCD 
+#define LCD 
 //#define RING
+
+#define PLOTTER
+
 #define SEALEVELPRESSURE_HPA (1013.25)
 
 #ifdef LCD
@@ -91,7 +94,7 @@ void setup() {
       lcd.setCursor (0,0);
       lcd.print("www.co2ampel.org");
       lcd.setCursor (0,1);
-      lcd.print("Version 1.0");
+      lcd.print("Version 1.2");
       delay(1000);
       lcd.setBacklight(0, 0, 0); //black is off
     #endif
@@ -137,7 +140,7 @@ void setup() {
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     } else {
-        printSerialNumber(serial0, serial1, serial2);
+        //printSerialNumber(serial0, serial1, serial2);
     }
 
     // Start Measurement
@@ -160,7 +163,7 @@ void setup() {
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320, 150); // 320*C for 150 ms
 
-  Serial.println("Waiting for first measurement... (5 sec)");
+  //Serial.println("Waiting for first measurement... (5 sec)");
   delay (5000);
 }
 
@@ -172,15 +175,31 @@ void loop() {
     uint16_t co2;
     float temperature;
     float humidity;
+
+    // read data from SCD4x
     error = scd4x.readMeasurement(co2, temperature, humidity);
     if (error) {
         Serial.print("Error trying to execute readMeasurement(): ");
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
-    } else if (co2 == 0) {
-        Serial.println("Invalid sample detected, skipping.");
-    } else {
-        Serial.print("SCDx - Co2:");
+    } 
+
+    // read data from BME68x
+    if (! bme.performReading()) {
+      Serial.println("Failed to perform reading :(");
+      return;
+    }
+
+    #ifdef PLOTTER
+        Serial.print("CO2:");
+        Serial.print(co2);
+        Serial.print(" Temperature:");
+        Serial.print(temperature);
+        Serial.print(" Humidity:");
+        Serial.println(humidity);
+    #else
+        // print SCD4x
+        Serial.print("SCD4x - Co2:");
         Serial.print(co2);
         Serial.print(" ppm, ");
         
@@ -191,7 +210,28 @@ void loop() {
         Serial.print("Humidity:");
         Serial.print(humidity);
         Serial.println(" %");
-    }
+
+        // print BME68x
+        Serial.print("BME68x - Temperature: ");
+        Serial.print(bme.temperature);
+        Serial.print(" *C, ");
+
+        Serial.print("Pressure: ");
+        Serial.print(bme.pressure / 100.0);
+        Serial.print(" hPa,");
+
+        Serial.print("Humidity: ");
+        Serial.print(bme.humidity);
+        Serial.print(" %, ");
+
+        Serial.print("Gas: ");
+        Serial.print(bme.gas_resistance / 1000.0);
+        Serial.print(" KOhms, ");
+
+        Serial.print("Altitude: ");
+        Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
+        Serial.println(" m");
+      #endif
 
     #ifdef LCD
       lcd.clear();
@@ -208,7 +248,7 @@ void loop() {
        WSGauge(co2,800,1000,100,20,true); //20 Ring
     #else
     
-      if (( ( co2 ) < ( 800 ) ))
+  if (( ( co2 ) < ( 800 ) ))
   {
     pixels.setPixelColor(0,0,30,0,0);
     pixels.show();
@@ -236,30 +276,6 @@ void loop() {
     }
   }
   #endif
-
-  if (! bme.performReading()) {
-    Serial.println("Failed to perform reading :(");
-    return;
-  }
-  Serial.print("BME68x - Temperature: ");
-  Serial.print(bme.temperature);
-  Serial.print(" *C, ");
-
-  Serial.print("Pressure: ");
-  Serial.print(bme.pressure / 100.0);
-  Serial.print(" hPa,");
-
-  Serial.print("Humidity: ");
-  Serial.print(bme.humidity);
-  Serial.print(" %, ");
-
-  Serial.print("Gas: ");
-  Serial.print(bme.gas_resistance / 1000.0);
-  Serial.print(" KOhms, ");
-
-  Serial.print("Altitude: ");
-  Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-  Serial.println(" m");
   
   delay(5000);
 }
