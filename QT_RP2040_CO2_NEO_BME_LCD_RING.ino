@@ -20,7 +20,7 @@ Adafruit_BME680 bme; // I2C
 #define LCD 
 //#define RING
 
-#define PLOTTER
+//#define PLOTTER
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
@@ -231,6 +231,9 @@ void loop() {
         Serial.print("Altitude: ");
         Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
         Serial.println(" m");
+
+        Serial.printf("Core temperature: %2.1fC\n", analogReadTemp());
+        Serial.println();
       #endif
 
     #ifdef LCD
@@ -279,3 +282,12 @@ void loop() {
   
   delay(5000);
 }
+
+/*
+// Running on core1
+void setup1() {  
+}
+
+void loop1() {
+}
+*/
