@@ -5,6 +5,8 @@
 #define PIN_WIRE1_SCL  (23u)
 */
 
+// Author Guido Burger, www.fab-lab.eu, incl. sofware as is by 3rd parties, as reference in the libs
+
 #include <Arduino.h>
 #include <SensirionI2CScd4x.h>
 #include <Wire.h>
@@ -13,20 +15,27 @@
 #include "Adafruit_BME680.h"
 #include <SerLCD.h> 
 
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
+#include <Fonts/FreeMonoBoldOblique24pt7b.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
+
 SensirionI2CScd4x scd4x;
 Adafruit_BME680 bme; // I2C
 
 //either LCD or RING not both!
-#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
+
+//#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
 //#define RING //use NeoPixel Ring with 20 Pixel
+#define OLED //use Adafruit 128x64 OLED Wing
 
 //set to plot data with Arduino(TM) Plotter
-//#define PLOTTER
+#define PLOTTER
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
 #ifdef LCD
-SerLCD lcd; // Initialize the library with default I2C address 0x72
+  SerLCD lcd; // Initialize the library with default I2C address 0x72
 #endif
 
 #ifdef RING
@@ -59,7 +68,12 @@ void WSGauge(float val, float limit1, float limit2, float delta, int seg, int di
   WSpixels.show(); // Anzeige
 }
 #else
-Adafruit_NeoPixel pixels(1, 3, NEO_GRB + NEO_KHZ800);
+  Adafruit_NeoPixel pixels(1, 3, NEO_GRB + NEO_KHZ800);
+#endif
+
+#ifdef OLED
+  Adafruit_SH110X display = Adafruit_SH110X(64, 128, &Wire1);
+  GFXcanvas1 canvas(64,128);
 #endif
 
 void printUint16Hex(uint16_t value) {
@@ -163,6 +177,30 @@ void setup() {
   bme.setPressureOversampling(BME680_OS_4X);
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320, 150); // 320*C for 150 ms
+
+  #ifdef OLED
+  //Serial.println("128x64 OLED FeatherWing test");
+  display.begin(0x3C, true); // Address 0x3C default
+  display.clearDisplay(); // Clear the buffer.
+  display.display();
+/*  
+  display.setRotation(1);
+  display.setTextSize(1);
+  display.setTextColor(SH110X_WHITE);
+  display.setCursor(0,0);
+  
+  display.println("CO2 Ampel V1.2");
+  display.println("www.co2ampel.org");
+  display.println("starts in 5sec ...");
+  delay(5000);
+  display.display();
+  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
+  display.display();
+  display.clearDisplay();
+*/
+  display.setRotation(0);
+  display.display();
+  #endif
 
   //Serial.println("Waiting for first measurement... (5 sec)");
   delay (5000);
@@ -280,6 +318,35 @@ void loop() {
     }
   }
   #endif
+
+  #ifdef OLED
+  canvas.fillScreen(SH110X_BLACK);
+  canvas.setRotation(1);
+
+  canvas.setTextSize(1);
+  canvas.setTextColor(SH110X_WHITE);
+  canvas.setFont(&FreeMonoBold24pt7b);
+  canvas.setCursor(0,45);
+
+  // for SCD40 
+  if (co2 <= 2000) {
+    canvas.print(String(co2));
+  } else 
+  {
+    canvas.print("----");
+  }
+  canvas.setFont();
+  canvas.setCursor(110,40);
+  canvas.print("ppm");
+  canvas.setCursor(2,55);
+  canvas.print(String(temperature-4)+"C");
+  canvas.setCursor(92,55);
+  canvas.print(String(humidity)+"%");
+    
+  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
+  display.display();
+  #endif
+
   
   delay(5000);
 }
