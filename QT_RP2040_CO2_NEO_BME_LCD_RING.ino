@@ -5,7 +5,11 @@
 #define PIN_WIRE1_SCL  (23u)
 */
 
-// Author Guido Burger, www.fab-lab.eu, incl. sofware as is by 3rd parties, as reference in the libs
+//
+// Author Guido Burger, www.fab-lab.eu, sofware as is incl. 3rd parties, as referenced in the libs
+// www.co2ampel.org
+// #CO2Ampel, #CO2Monitor
+//
 
 #include <Arduino.h>
 #include <SensirionI2CScd4x.h>
@@ -289,7 +293,9 @@ void loop() {
        // WSGauge(co2,800,1000,100,10,true); //10 Bar
        WSGauge(co2,800,1000,100,20,true); //20 Ring
     #else
-    
+
+
+  // Ampel - Traffic Light: <800 green, >800 yellow, >1000 red, adopt to your requirements!  
   if (( ( co2 ) < ( 800 ) ))
   {
     pixels.setPixelColor(0,0,30,0,0);
@@ -322,7 +328,10 @@ void loop() {
   #ifdef OLED
   canvas.fillScreen(SH110X_BLACK);
   canvas.setRotation(1);
-
+  canvas.setFont();
+  canvas.setCursor(2,0);
+  canvas.print("#CO2Ampel.org - V1.2");
+  
   canvas.setTextSize(1);
   canvas.setTextColor(SH110X_WHITE);
   canvas.setFont(&FreeMonoBold24pt7b);
@@ -347,7 +356,6 @@ void loop() {
   display.display();
   #endif
 
-  
   delay(5000);
 }
 
