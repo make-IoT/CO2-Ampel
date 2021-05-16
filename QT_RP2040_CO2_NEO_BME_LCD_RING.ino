@@ -5,6 +5,11 @@
 #define PIN_WIRE1_SCL  (23u)
 */
 
+/* Wire - check pins_arduino.h for M5 ATOM /opt/arduino-1.8.13/portable/packages/esp32/hardware/esp32/1.0.6/variants/m5stack_atom
+// static const uint8_t SDA = 25;  //26
+// static const uint8_t SCL = 21;  //32
+*/
+
 //
 // Author Guido Burger, www.fab-lab.eu, sofware as is incl. 3rd parties, as referenced in the libs
 // www.co2ampel.org
@@ -20,21 +25,28 @@
 #include "Adafruit_BME680.h"
 #include <SerLCD.h> 
 
+// only for OLED
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
 #include <Fonts/FreeMonoBoldOblique24pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
+// only for M5Atom
+#include <M5Atom.h>   // http://librarymanager/All#M5Atom  https://github.com/m5stack/M5Atom
+#include <FastLED.h>  // http://librarymanager/All#FastLED https://github.com/FastLED/FastLED
+
 #include <LinearRegression.h>
-LinearRegression lr; // Define Ob jects
-float values[2]; // Define Variables
+LinearRegression lr; // define objects
+float values[2]; // define variables
 int zaehler = 0;
 int forecast = 0;
 double correlation;
+
 String trafficLight = "green";
-int greenLevel = 0; // max
-int yellowLevel = 800; // max
-int redLevel = 1000; // max
+int greenLevel = 0; // max.
+int yellowLevel = 800; // max.
+int redLevel = 1000; // max.
+int tempAdjust = -7; // compensation board heating RP2040
 
 SensirionI2CScd4x scd4x;
 Adafruit_BME680 bme; // I2C
@@ -42,7 +54,9 @@ Adafruit_BME680 bme; // I2C
 /**either LCD or RING not both!**/
 //#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
 //#define RING //use NeoPixel Ring with 20 Pixel
-#define OLED //use Adafruit 128x64 OLED Wing
+//#define OLED //use Adafruit 128x64 OLED Wing
+#define M5ATOM //use if HW is M5Atom
+
 #define PLOTTER //set to plot data with Arduino(TM) Plotter
 
 #define SEALEVELPRESSURE_HPA (1013.25)
@@ -107,9 +121,24 @@ void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
 }
 
 void setup() {
+
+  #ifdef M5ATOM
+    M5.begin(true, true, true);  // (Serial, I2C, NeoPixel)
+    /*
+    pinMode(22, INPUT); // PIN  (INPUT, OUTPUT,       )
+    pinMode(19, INPUT); // PIN  (INPUT, OUTPUT,       )
+    pinMode(23, INPUT); // PIN  (INPUT, OUTPUT,       )
+    pinMode(33, INPUT); // PIN  (INPUT, OUTPUT, ANALOG)
+    pinMode(26, INPUT); // GROVE(INPUT, OUTPUT, ANALOG)
+    pinMode(32, INPUT); // GROVE(INPUT, OUTPUT, ANALOG)
+    pinMode(12, OUTPUT_OPEN_DRAIN); 
+    digitalWrite(12, HIGH);
+    */
+  #endif
+
     Serial.begin(115200);
     while (!Serial) {
-        delay(100);
+      delay(100);
     }
     
     Wire.begin();
@@ -194,11 +223,11 @@ void setup() {
   bme.setGasHeater(320, 150); // 320*C for 150 ms
 
   #ifdef OLED
-  //Serial.println("128x64 OLED FeatherWing test");
-  display.begin(0x3C, true); // Address 0x3C default
-  display.clearDisplay(); // Clear the buffer.
-  display.setRotation(0);
-  display.display();
+    //Serial.println("128x64 OLED FeatherWing test");
+    display.begin(0x3C, true); // Address 0x3C default
+    display.clearDisplay(); // Clear the buffer.
+    display.setRotation(0);
+    display.display();
   #endif
 
   //Serial.println("Waiting for first measurement... (5 sec)");
@@ -206,6 +235,11 @@ void setup() {
 }
 
 void loop() {
+
+  #ifdef M5ATOM
+    M5.update();
+  #endif
+  
     uint16_t error;
     char errorMessage[256];
     
@@ -217,12 +251,12 @@ void loop() {
     // read data from SCD4x
     error = scd4x.readMeasurement(co2, temperature, humidity);
     if (error) {
-        Serial.print("Error trying to execute readMeasurement(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
+      Serial.print("Error trying to execute readMeasurement(): ");
+      errorToString(error, errorMessage, 256);
+      Serial.println(errorMessage);
     } 
 
-    temperature = temperature - 5; // adjust to hw ... eg -5C
+    temperature = temperature + tempAdjust; // adjust to hw ... eg -7C
 
     // read data from BME68x
     if (! bme.performReading()) {
@@ -335,11 +369,18 @@ void loop() {
   if (( ( co2 ) < ( yellowLevel ) ))
   {
     pixels.setPixelColor(0,0,30,0,0);
-    pixels.show();
+    pixels.show(); 
+    
     #ifdef LCD
       lcd.setBacklight(0, 255, 0); //green
     #endif
     trafficLight = "green";
+
+    #ifdef M5ATOM
+      for (int i = 0; i < 25; i++) {
+      M5.dis.drawpix(i, 0xff0000); //green
+      }
+    #endif
   }
   else
   {
@@ -347,19 +388,33 @@ void loop() {
     {
       pixels.setPixelColor(0,30,30,0,0);
       pixels.show();
+      
       #ifdef LCD
         lcd.setBacklight(255, 255, 0); //yellow
       #endif
       trafficLight = "yellow";
+      
+      #ifdef M5ATOM
+        for (int i = 0; i < 25; i++) {
+        M5.dis.drawpix(i, 0xffff00); //yellow
+        }
+      #endif
     }
     else
     {
       pixels.setPixelColor(0,40,0,0,0);
       pixels.show();
+      
       #ifdef LCD
         lcd.setBacklight(255, 0, 0); //red
       #endif
       trafficLight = "red";
+
+      #ifdef M5ATOM
+        for (int i = 0; i < 25; i++) {
+        M5.dis.drawpix(i, 0x00ff00); //red
+        }
+      #endif  
     }
   }
   #endif
@@ -389,8 +444,9 @@ void loop() {
   canvas.setCursor(2,55);
   canvas.print(String(temperature)+"C");
   canvas.setCursor(92,55);
-  canvas.print(String(humidity)+"%");
-
+  //canvas.print(String(humidity)+"%"); //SCD40
+  canvas.print(String(bme.humidity)+"%"); //BME68x
+  
   // forecast
   canvas.setCursor(115,20);
   if (correlation > 0.4 && forecast < 99) { // we got stable forecast and < 99 min
