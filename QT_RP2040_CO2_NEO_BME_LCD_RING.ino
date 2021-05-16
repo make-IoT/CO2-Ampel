@@ -12,6 +12,7 @@
 //
 
 #include <Arduino.h>
+#include <math.h>
 #include <SensirionI2CScd4x.h>
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
@@ -24,19 +25,29 @@
 #include <Fonts/FreeMonoBoldOblique24pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
+#include <LinearRegression.h>
+LinearRegression lr; // Define Ob jects
+float values[2]; // Define Variables
+int zaehler = 0;
+int forecast = 0;
+double correlation;
+String trafficLight = "green";
+int greenLevel = 0; // max
+int yellowLevel = 800; // max
+int redLevel = 1000; // max
+
 SensirionI2CScd4x scd4x;
 Adafruit_BME680 bme; // I2C
 
-//either LCD or RING not both!
-
+/**either LCD or RING not both!**/
 //#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
 //#define RING //use NeoPixel Ring with 20 Pixel
 #define OLED //use Adafruit 128x64 OLED Wing
-
-//set to plot data with Arduino(TM) Plotter
-#define PLOTTER
+#define PLOTTER //set to plot data with Arduino(TM) Plotter
 
 #define SEALEVELPRESSURE_HPA (1013.25)
+
+/** start **/
 
 #ifdef LCD
   SerLCD lcd; // Initialize the library with default I2C address 0x72
@@ -186,22 +197,6 @@ void setup() {
   //Serial.println("128x64 OLED FeatherWing test");
   display.begin(0x3C, true); // Address 0x3C default
   display.clearDisplay(); // Clear the buffer.
-  display.display();
-/*  
-  display.setRotation(1);
-  display.setTextSize(1);
-  display.setTextColor(SH110X_WHITE);
-  display.setCursor(0,0);
-  
-  display.println("CO2 Ampel V1.2");
-  display.println("www.co2ampel.org");
-  display.println("starts in 5sec ...");
-  delay(5000);
-  display.display();
-  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
-  display.display();
-  display.clearDisplay();
-*/
   display.setRotation(0);
   display.display();
   #endif
@@ -227,10 +222,50 @@ void loop() {
         Serial.println(errorMessage);
     } 
 
+    temperature = temperature - 5; // adjust to hw ... eg -5C
+
     // read data from BME68x
     if (! bme.performReading()) {
       Serial.println("Failed to perform reading :(");
       return;
+    }
+
+    // linear regression
+    zaehler ++;
+    lr.Data(co2);
+
+    if (zaehler > 9) {
+      // calculation Linear Regression of last 10 data points
+      /*
+      Serial.print(lr.Samples()); Serial.println(" Point Linear Regression Calculation...");
+      Serial.print("Correlation: "); Serial.println(lr.Correlation());
+      Serial.print("Values: "); lr.Parameters(values); Serial.print("Y = "); Serial.print(values[0],4); Serial.print("*X + "); Serial.println(values[1],4);
+      Serial.print("Values: "); lr.Parameters(values); Serial.print(" a = "); Serial.print(values[0],4); Serial.print(" b = "); Serial.println(values[1],4); 
+      Serial.print("Degree(°): "); Serial.print(57.2957795*atan(values[0]),2); Serial.println(""); // convert rad to deg
+      Serial.print("Time(s): "); Serial.print((1000-values[1])/values[0]*5,2); Serial.println(""); 
+      */
+      lr.Samples();
+     
+      correlation = lr.Correlation();
+      Serial.print(correlation); //
+      lr.Parameters(values); 
+      Serial.print(": y = "); Serial.print(values[0],2); Serial.print("*x + "); Serial.println(values[1],2); //
+      Serial.println(trafficLight); //
+      
+      if (trafficLight == "green") {
+        forecast = int((yellowLevel-values[1])/values[0]*5/60); // forecast till 800 ppm, steps 5s, in minute
+        Serial.println(yellowLevel); //
+      }
+      
+      if (trafficLight == "yellow") {
+        forecast = int((redLevel-values[1])/values[0]*5/60); // forecast till 1000 ppm, steps 5s, in minute
+        Serial.println(redLevel); //
+      }
+  
+      Serial.print("Time(min): "); Serial.print(forecast); Serial.println(""); //
+      // Reset
+      lr.Reset(); 
+      zaehler = 0;
     }
 
     #ifdef PLOTTER
@@ -240,6 +275,7 @@ void loop() {
         Serial.print(temperature);
         Serial.print(" Humidity:");
         Serial.println(humidity);
+
     #else
         // print SCD4x
         Serial.print("SCD4x - Co2:");
@@ -275,6 +311,7 @@ void loop() {
         Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
         Serial.println(" m");
 
+        // Temperature RP2040 core
         Serial.printf("Core temperature: %2.1fC\n", analogReadTemp());
         Serial.println();
       #endif
@@ -294,25 +331,26 @@ void loop() {
        WSGauge(co2,800,1000,100,20,true); //20 Ring
     #else
 
-
   // Ampel - Traffic Light: <800 green, >800 yellow, >1000 red, adopt to your requirements!  
-  if (( ( co2 ) < ( 800 ) ))
+  if (( ( co2 ) < ( yellowLevel ) ))
   {
     pixels.setPixelColor(0,0,30,0,0);
     pixels.show();
     #ifdef LCD
       lcd.setBacklight(0, 255, 0); //green
     #endif
+    trafficLight = "green";
   }
   else
   {
-    if (( ( co2 ) < ( 1000 ) ))
+    if (( ( co2 ) < ( redLevel ) ))
     {
       pixels.setPixelColor(0,30,30,0,0);
       pixels.show();
       #ifdef LCD
         lcd.setBacklight(255, 255, 0); //yellow
       #endif
+      trafficLight = "yellow";
     }
     else
     {
@@ -321,6 +359,7 @@ void loop() {
       #ifdef LCD
         lcd.setBacklight(255, 0, 0); //red
       #endif
+      trafficLight = "red";
     }
   }
   #endif
@@ -329,15 +368,15 @@ void loop() {
   canvas.fillScreen(SH110X_BLACK);
   canvas.setRotation(1);
   canvas.setFont();
-  canvas.setCursor(2,0);
+  canvas.setCursor(2,5);
   canvas.print("#CO2Ampel.org - V1.2");
   
   canvas.setTextSize(1);
   canvas.setTextColor(SH110X_WHITE);
   canvas.setFont(&FreeMonoBold24pt7b);
-  canvas.setCursor(0,45);
+  canvas.setCursor(0,47);
 
-  // for SCD40 
+  // for SCD40 limit, adjust for SCD41 to 5000ppm
   if (co2 <= 2000) {
     canvas.print(String(co2));
   } else 
@@ -345,12 +384,20 @@ void loop() {
     canvas.print("----");
   }
   canvas.setFont();
-  canvas.setCursor(110,40);
+  canvas.setCursor(110,42);
   canvas.print("ppm");
   canvas.setCursor(2,55);
-  canvas.print(String(temperature-4)+"C");
+  canvas.print(String(temperature)+"C");
   canvas.setCursor(92,55);
   canvas.print(String(humidity)+"%");
+
+  // forecast
+  canvas.setCursor(115,20);
+  if (correlation > 0.4 && forecast < 99) { // we got stable forecast and < 15 min
+    canvas.print(String(forecast));
+  } else {
+    canvas.print("--");
+  }
     
   display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
   display.display();
