@@ -31,10 +31,6 @@
 #include <Fonts/FreeMonoBoldOblique24pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
-// only for M5Atom
-#include <M5Atom.h>   // http://librarymanager/All#M5Atom  https://github.com/m5stack/M5Atom
-#include <FastLED.h>  // http://librarymanager/All#FastLED https://github.com/FastLED/FastLED
-
 #include <LinearRegression.h>
 LinearRegression lr; // define objects
 float values[2]; // define variables
@@ -54,8 +50,14 @@ Adafruit_BME680 bme; // I2C
 /**either LCD or RING not both!**/
 //#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
 //#define RING //use NeoPixel Ring with 20 Pixel
-//#define OLED //use Adafruit 128x64 OLED Wing
-#define M5ATOM //use if HW is M5Atom
+#define OLED //use Adafruit 128x64 OLED Wing
+//#define M5ATOM //use if HW is M5Atom
+
+#ifdef M5ATOM
+  // only for M5Atom
+  #include <M5Atom.h>   // http://librarymanager/All#M5Atom  https://github.com/m5stack/M5Atom
+  #include <FastLED.h>  // http://librarymanager/All#FastLED https://github.com/FastLED/FastLED
+#endif
 
 #define PLOTTER //set to plot data with Arduino(TM) Plotter
 
