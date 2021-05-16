@@ -393,7 +393,7 @@ void loop() {
 
   // forecast
   canvas.setCursor(115,20);
-  if (correlation > 0.4 && forecast < 99) { // we got stable forecast and < 15 min
+  if (correlation > 0.4 && forecast < 99) { // we got stable forecast and < 99 min
     canvas.print(String(forecast));
   } else {
     canvas.print("--");
