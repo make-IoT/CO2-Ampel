@@ -19,7 +19,7 @@
 
 //
 // Author Guido Burger, www.fab-lab.eu, sofware as is incl. 3rd parties, as referenced in the libs
-// www.co2ampel.org
+// www.co2ampel.org, #IoT Werkstatt
 // #CO2Ampel, #CO2Monitor
 //
 
