@@ -1,11 +1,18 @@
-/* Wire - check pins_arduino.h for QT RP2040 /opt/arduino-1.8.13/portable/packages/rp2040/hardware/rp2040/1.2.1/variants/adafruitfeather
+/** check wiring and pin mapping first! **/
+
+/* Wire - check pins_arduino.h for QT PY RP2040 /opt/arduino-1.8.13/portable/packages/rp2040/hardware/rp2040/1.4.0/variants/adafruitfeather
 #define PIN_WIRE0_SDA  (24u) 
 #define PIN_WIRE0_SCL  (25u) 
 #define PIN_WIRE1_SDA  (22u)
 #define PIN_WIRE1_SCL  (23u)
 */
 
-/* Wire - check pins_arduino.h for M5 ATOM /opt/arduino-1.8.13/portable/packages/esp32/hardware/esp32/1.0.6/variants/m5stack_atom
+/* Wire - check pins_arduino.h for Feather RP2040 /opt/arduino-1.8.13/portable/packages/rp2040/hardware/rp2040/1.2.1/variants/adafruitfeather
+#define PIN_WIRE0_SDA  (2u) 
+#define PIN_WIRE0_SCL  (3u) 
+*/
+
+/* Wire - check pins_arduino.h for M5ATOM Matrix /opt/arduino-1.8.13/portable/packages/esp32/hardware/esp32/1.0.6/variants/m5stack_atom
 // static const uint8_t SDA = 25;  //26
 // static const uint8_t SCL = 21;  //32
 */
@@ -15,6 +22,8 @@
 // www.co2ampel.org
 // #CO2Ampel, #CO2Monitor
 //
+
+// /opt/arduino-1.8.13/portable/packages/rp2040/hardware/rp2040/1.4.0/tools/uf2conv.py  (want to change name NEW.UF2 ?)
 
 #include <Arduino.h>
 #include <math.h>
@@ -38,6 +47,8 @@ int zaehler = 0;
 int forecast = 0;
 double correlation;
 
+/** config **/
+
 String trafficLight = "green";
 int greenLevel = 0; // max.
 int yellowLevel = 800; // max.
@@ -47,11 +58,17 @@ int tempAdjust = -7; // compensation board heating RP2040
 SensirionI2CScd4x scd4x;
 Adafruit_BME680 bme; // I2C
 
-/**either LCD or RING not both!**/
+/**only ONE display option at a time **/
 //#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
 //#define RING //use NeoPixel Ring with 20 Pixel
 #define OLED //use Adafruit 128x64 OLED Wing
-//#define M5ATOM //use if HW is M5Atom
+//#define M5ATOM //use if HW is M5Atom Matrix
+
+#define PLOTTER //set to plot data with Arduino(TM) Plotter, otherwise debug output
+
+#define SEALEVELPRESSURE_HPA (1013.25)
+
+/** start **/
 
 #ifdef M5ATOM
   // only for M5Atom
@@ -59,19 +76,13 @@ Adafruit_BME680 bme; // I2C
   #include <FastLED.h>  // http://librarymanager/All#FastLED https://github.com/FastLED/FastLED
 #endif
 
-#define PLOTTER //set to plot data with Arduino(TM) Plotter
-
-#define SEALEVELPRESSURE_HPA (1013.25)
-
-/** start **/
-
 #ifdef LCD
   SerLCD lcd; // Initialize the library with default I2C address 0x72
 #endif
 
 #ifdef RING
-//Adafruit_NeoPixel WSpixels = Adafruit_NeoPixel((10<24)?10:24,23,NEO_GRB + NEO_KHZ800); //10 Bar
-Adafruit_NeoPixel WSpixels = Adafruit_NeoPixel((20<24)?20:24,23,NEO_GRB + NEO_KHZ800); //20 Ring
+//Adafruit_NeoPixel WSpixels = Adafruit_NeoPixel((10<24)?10:24,23,NEO_GRB + NEO_KHZ800); //10 Bar at QT PY RP2040 QWIIC
+Adafruit_NeoPixel WSpixels = Adafruit_NeoPixel((20<24)?20:24,23,NEO_GRB + NEO_KHZ800); //20 Ring at QT PY RP2040 QWIIC
 
 //--------- Neopixel Messanzeige (Gauge)
 void WSGauge(float val, float limit1, float limit2, float delta, int seg, int dir){
@@ -99,12 +110,14 @@ void WSGauge(float val, float limit1, float limit2, float delta, int seg, int di
   WSpixels.show(); // Anzeige
 }
 #else
-  Adafruit_NeoPixel pixels(1, 3, NEO_GRB + NEO_KHZ800);
+  Adafruit_NeoPixel pixels(1, 3, NEO_GRB + NEO_KHZ800); // QT PY RP2040
+  //Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1,10,NEO_GRBW + NEO_KHZ800); // QT PY SAMD21
 #endif
 
 #ifdef OLED
-  Adafruit_SH110X display = Adafruit_SH110X(64, 128, &Wire1);
-  GFXcanvas1 canvas(64,128);
+  Adafruit_SH110X display = Adafruit_SH110X(64, 128, &Wire1); // QT PY RP2040 use the QWIIC I2C second port
+  //Adafruit_SH110X display = Adafruit_SH110X(64, 128, &Wire); // Feather RP2040 use the QWIIC I2C first port
+  GFXcanvas1 canvas(64,128); // memory buffer for flicker-free display
 #endif
 
 void printUint16Hex(uint16_t value) {
@@ -139,10 +152,6 @@ void setup() {
   #endif
 
     Serial.begin(115200);
-    while (!Serial) {
-      delay(100);
-    }
-    
     Wire.begin();
 
     #ifdef LCD
@@ -156,8 +165,15 @@ void setup() {
       lcd.print("www.co2ampel.org");
       lcd.setCursor (0,1);
       lcd.print("Version 1.2");
-      delay(1000);
-      lcd.setBacklight(0, 0, 0); //black is off
+      // check RGB lights
+      lcd.setBacklight(0, 0, 0); //black is off   
+        delay(500);
+      lcd.setBacklight(255, 0, 0); //red
+        delay(1000);
+      lcd.setBacklight(255, 255, 0); //yellow
+        delay(1000);
+      lcd.setBacklight(0, 255, 0); //green
+        delay(500);   
     #endif
 
     #ifdef RING
@@ -165,16 +181,16 @@ void setup() {
       WSpixels.show();  
     #else
       pixels.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
-      // Test RGB
+      // check RGB lights
       pixels.setPixelColor(0,0,30,0,0);
       pixels.show();
-      delay(500);
+        delay(1000);
       pixels.setPixelColor(0,30,30,0,0);
       pixels.show();
-      delay(500);
+        delay(1000);
       pixels.setPixelColor(0,40,0,0,0);
       pixels.show();
-      delay(500);
+        delay(1000);
       pixels.setPixelColor(0,0,0,0,0); // alle aus
       pixels.show(); 
     #endif
@@ -281,24 +297,26 @@ void loop() {
       Serial.print("Time(s): "); Serial.print((1000-values[1])/values[0]*5,2); Serial.println(""); 
       */
       lr.Samples();
-     
       correlation = lr.Correlation();
-      Serial.print(correlation); //
-      lr.Parameters(values); 
-      Serial.print(": y = "); Serial.print(values[0],2); Serial.print("*x + "); Serial.println(values[1],2); //
-      Serial.println(trafficLight); //
+      lr.Parameters(values);
       
       if (trafficLight == "green") {
         forecast = int((yellowLevel-values[1])/values[0]*5/60); // forecast till 800 ppm, steps 5s, in minute
-        Serial.println(yellowLevel); //
+        //Serial.println(yellowLevel); //
       }
       
       if (trafficLight == "yellow") {
         forecast = int((redLevel-values[1])/values[0]*5/60); // forecast till 1000 ppm, steps 5s, in minute
-        Serial.println(redLevel); //
+        //Serial.println(redLevel); //
       }
-  
-      Serial.print("Time(min): "); Serial.print(forecast); Serial.println(""); //
+
+      #ifndef PLOTTER
+        Serial.print(correlation); //
+        Serial.print(": y = "); Serial.print(values[0],2); Serial.print("*x + "); Serial.println(values[1],2); //
+        Serial.println(trafficLight); //
+        Serial.print("Time(min): "); Serial.print(forecast); Serial.println(""); //
+      #endif
+       
       // Reset
       lr.Reset(); 
       zaehler = 0;
@@ -311,7 +329,6 @@ void loop() {
         Serial.print(temperature);
         Serial.print(" Humidity:");
         Serial.println(humidity);
-
     #else
         // print SCD4x
         Serial.print("SCD4x - Co2:");
@@ -446,10 +463,12 @@ void loop() {
   canvas.setCursor(2,55);
   canvas.print(String(temperature)+"C");
   canvas.setCursor(92,55);
-  //canvas.print(String(humidity)+"%"); //SCD40
-  canvas.print(String(bme.humidity)+"%"); //BME68x
+  canvas.print(String(humidity)+"%"); //SCD40
+  //canvas.print(String(bme.humidity)+"%"); //BME68x
   
   // forecast
+  canvas.setCursor(115,20);
+  canvas.print("  "); // clear to avoid "-" leading a single digit value
   canvas.setCursor(115,20);
   if (correlation > 0.4 && forecast < 99) { // we got stable forecast and < 99 min
     canvas.print(String(forecast));
