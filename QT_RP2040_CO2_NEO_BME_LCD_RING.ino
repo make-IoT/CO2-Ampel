@@ -21,6 +21,7 @@
 // Author Guido Burger, www.fab-lab.eu, sofware as is incl. 3rd parties, as referenced in the libs
 // www.co2ampel.org, #IoT Werkstatt
 // #CO2Ampel, #CO2Monitor
+// use with Adafruit QT PY RP2040, Feather RP2040, QT PY SAMD51 or M5Atom
 //
 
 // /opt/arduino-1.8.13/portable/packages/rp2040/hardware/rp2040/1.4.0/tools/uf2conv.py  (want to change name NEW.UF2 ?)
@@ -41,30 +42,63 @@
 #include <Fonts/FreeMonoBold24pt7b.h>
 
 #include <LinearRegression.h>
-LinearRegression lr; // define objects
-float values[2]; // define variables
-int zaehler = 0;
-int forecast = 0;
+LinearRegression lr;    // define objects
+float values[2];        // define variables
+int zaehler = 0;        // counting values for regression
+int forecast = 0;       // in time[min] will be reach the next threshold 
 double correlation;
+
+// as BSEC is not yet available for RP2040(?) we sue simple VOC/IAQ calc for now
+// VOC basic
+/**
+This IAQ and the ideas and concepts is Copyright (c) David Bird 2018. All rights to this IAQ 
+and software are reserved. Any redistribution or reproduction of any part or all of the 
+contents in any form is prohibited other than the following:
+
+You may print or download to a local hard disk extracts for your personal and non-commercial use only.
+You may copy the content to individual third parties for their personal use, but only if you 
+acknowledge the author David Bird as the source of the material.
+You may not, except with my express written permission, distribute or commercially exploit the content.
+You may not transmit it or store it in any other website or other form of electronic retrieval 
+system for commercial purposes.
+The above copyright ('as annotated') notice and this permission notice shall be included in 
+all copies or substantial portions of the IAQ index and Software and where the software use 
+is visible to an end-user.
+**/
+
+// https://github.com/G6EJD/BME680-Example/blob/master/ESP32_bme680_CC_demo_03.ino
+float hum_weighting = 0.25; // so hum effect is 25% of the total air quality score
+float gas_weighting = 0.75; // so gas effect is 75% of the total air quality score
+
+int   humidity_score, gas_score;
+float gas_reference = 2500;
+float hum_reference = 40;
+int   getgasreference_count = 0;
+int   gas_lower_limit = 10000;  // Bad air quality limit
+int   gas_upper_limit = 300000; // Good air quality limit
 
 /** config **/
 
 String trafficLight = "green";
-int greenLevel = 0; // max.
-int yellowLevel = 800; // max.
-int redLevel = 1000; // max.
-int tempAdjust = -7; // compensation board heating RP2040
+int greenLevel = 0;     // threshold - enterng green level
+int yellowLevel = 800;  // threshold - entering yellow level
+int redLevel = 1000;    // threshold - entering red level
+int tempAdjust = -7;    // compensation board heating RP2040
+
+double max_co2 = 0;
+double min_co2 = 0;
+int i = 0;
 
 SensirionI2CScd4x scd4x;
-Adafruit_BME680 bme; // I2C
+Adafruit_BME680 bme;    // I2C
 
 /**only ONE display option at a time **/
-//#define LCD //use Sparkfun SerLCD/RGB/3.3V/I2C
-//#define RING //use NeoPixel Ring with 20 Pixel
-#define OLED //use Adafruit 128x64 OLED Wing
-//#define M5ATOM //use if HW is M5Atom Matrix
+#define LCD           //use Sparkfun SerLCD/RGB/3.3V/I2C
+//#define RING          //use NeoPixel Ring with 20 Pixel
+//#define OLED            //use Adafruit 128x64 OLED Wing
+//#define M5ATOM        //use if HW is M5Atom Matrix
 
-#define PLOTTER //set to plot data with Arduino(TM) Plotter, otherwise debug output
+#define PLOTTER         //set to plot data with Arduino(TM) Plotter, otherwise debug output
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
@@ -240,6 +274,11 @@ void setup() {
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320, 150); // 320*C for 150 ms
 
+  // VOC basic
+  // Now run the sensor to normalise the readings, then use combination of relative humidity and gas resistance to estimate indoor air quality as a percentage.
+  // The sensor takes ~30-mins to fully stabilise
+  GetGasReference();
+
   #ifdef OLED
     //Serial.println("128x64 OLED FeatherWing test");
     display.begin(0x3C, true); // Address 0x3C default
@@ -266,6 +305,23 @@ void loop() {
     float temperature;
     float humidity;
 
+  // VOC basic
+  /*
+  Serial.println("Sensor Readings:");
+  Serial.println("  Temperature = " + String(bme.readTemperature(), 2)     + "°C");
+  Serial.println("     Pressure = " + String(bme.readPressure() / 100.0F) + " hPa");
+  Serial.println("     Humidity = " + String(bme.readHumidity(), 1)        + "%");
+  Serial.println("          Gas = " + String(gas_reference)               + " ohms\n");
+  */
+  humidity_score = GetHumidityScore();
+  gas_score      = GetGasScore();
+
+  //Combine results for the final IAQ index value (0-100% where 100% is good quality air)
+  float air_quality_score = humidity_score + gas_score;
+  if ((getgasreference_count++) % 5 == 0) GetGasReference();
+  //Serial.println(CalculateIAQ(air_quality_score));
+  //delay(2000);
+
     // read data from SCD4x
     error = scd4x.readMeasurement(co2, temperature, humidity);
     if (error) {
@@ -276,13 +332,41 @@ void loop() {
 
     temperature = temperature + tempAdjust; // adjust to hw ... eg -7C
 
+
+
+    i++;
+  
+    if (max_co2 < co2) {
+      max_co2 = co2;
+    }
+
+    if (min_co2 > co2) {
+      min_co2 = co2;
+    } else {
+      if (min_co2 == 0) {
+        min_co2 = co2;
+      }
+    }
+
+    Serial.println (min_co2);
+    Serial.println (max_co2);
+
+    // 5 sec sample -> 45 min = 540, max / min pro Schulstunde 
+    if (i > 540) {
+      max_co2 = 0;
+      min_co2 = 0;
+      i = 0;
+      }
+
+
+
     // read data from BME68x
     if (! bme.performReading()) {
       Serial.println("Failed to perform reading :(");
       return;
     }
 
-    // linear regression
+    // calc linear regression for x data points
     zaehler ++;
     lr.Data(co2);
 
@@ -328,7 +412,9 @@ void loop() {
         Serial.print(" Temperature:");
         Serial.print(temperature);
         Serial.print(" Humidity:");
-        Serial.println(humidity);
+        Serial.print(humidity);
+        Serial.print(" IAQ:");
+        Serial.println(  (100 - air_quality_score)*5);
     #else
         // print SCD4x
         Serial.print("SCD4x - Co2:");
@@ -435,7 +521,7 @@ void loop() {
         }
       #endif  
     }
-  }
+  } // VOC
   #endif
 
   #ifdef OLED
@@ -462,6 +548,13 @@ void loop() {
   canvas.print("ppm");
   canvas.setCursor(2,55);
   canvas.print(String(temperature)+"C");
+
+  // VOC basic
+  canvas.setCursor(55,55);
+  //canvas.print(String(int(bme.gas_resistance / 1000.0))+"R"); 
+  canvas.print(String(int(100 - air_quality_score)*5)+"Q"); //IAQ Index
+  //Serial.println(CalculateIAQ(air_quality_score)); //IAQ classification
+
   canvas.setCursor(92,55);
   canvas.print(String(humidity)+"%"); //SCD40
   //canvas.print(String(bme.humidity)+"%"); //BME68x
@@ -476,7 +569,7 @@ void loop() {
     canvas.print("--");
   }
     
-  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128, SH110X_WHITE, SH110X_BLACK);
+  display.drawBitmap (0,0, canvas.getBuffer(), 64, 128,SH110X_WHITE,SH110X_BLACK);
   display.display();
   #endif
 
@@ -491,3 +584,56 @@ void setup1() {
 void loop1() {
 }
 */
+
+
+
+
+
+// VOC basic
+void GetGasReference() {
+  // Now run the sensor for a burn-in period, then use combination of relative humidity and gas resistance to estimate indoor air quality as a percentage.
+  //Serial.println("Getting a new gas reference value");
+  int readings = 10;
+  for (int i = 1; i <= readings; i++) { // read gas for 10 x 0.150mS = 1.5secs
+    gas_reference += bme.readGas();
+  }
+  gas_reference = gas_reference / readings;
+  //Serial.println("Gas Reference = "+String(gas_reference,3));
+}
+
+String CalculateIAQ(int score) {
+  String IAQ_text = "air quality is "; 
+  score = (100 - score) * 5;
+  if      (score >= 301)                  IAQ_text += "Hazardous";
+  else if (score >= 201 && score <= 300 ) IAQ_text += "Very Unhealthy";
+  else if (score >= 176 && score <= 200 ) IAQ_text += "Unhealthy";
+  else if (score >= 151 && score <= 175 ) IAQ_text += "Unhealthy for Sensitive Groups";
+  else if (score >=  51 && score <= 150 ) IAQ_text += "Moderate";
+  else if (score >=  00 && score <=  50 ) IAQ_text += "Good";
+  Serial.print("IAQ Score = " + String(score) + ", ");
+  return IAQ_text;
+}
+
+int GetHumidityScore() {  //Calculate humidity contribution to IAQ index
+  float current_humidity = bme.readHumidity();
+  if (current_humidity >= 38 && current_humidity <= 42) // Humidity +/-5% around optimum
+    humidity_score = 0.25 * 100;
+  else
+  { // Humidity is sub-optimal
+    if (current_humidity < 38)
+      humidity_score = 0.25 / hum_reference * current_humidity * 100;
+    else
+    {
+      humidity_score = ((-0.25 / (100 - hum_reference) * current_humidity) + 0.416666) * 100;
+    }
+  }
+  return humidity_score;
+}
+
+int GetGasScore() {
+  //Calculate gas contribution to IAQ index
+  gas_score = (0.75 / (gas_upper_limit - gas_lower_limit) * gas_reference - (gas_lower_limit * (0.75 / (gas_upper_limit - gas_lower_limit)))) * 100.00;
+  if (gas_score > 75) gas_score = 75; // Sometimes gas readings can go outside of expected scale maximum
+  if (gas_score <  0) gas_score = 0;  // Sometimes gas readings can go outside of expected scale minimum
+  return gas_score;
+}
